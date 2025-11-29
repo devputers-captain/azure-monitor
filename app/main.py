@@ -4,9 +4,10 @@ import time
 from typing import Optional
 
 import requests
-from app.telemetry import setup_telemetry
 from fastapi import FastAPI, HTTPException, Query
 from opentelemetry import metrics, trace
+
+from app.telemetry import setup_telemetry
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -68,6 +69,19 @@ async def root():
             "dependency": "/demo/dependency",
             "slow_operation": "/demo/slow",
             "all_telemetry": "/demo/all",
+        },
+        "http_error_demos": {
+            "overview": "/demo/http-errors",
+            "400_bad_request": "/demo/http-errors/400",
+            "401_unauthorized": "/demo/http-errors/401",
+            "403_forbidden": "/demo/http-errors/403",
+            "404_not_found": "/demo/http-errors/404",
+            "429_rate_limit": "/demo/http-errors/429",
+            "500_server_error": "/demo/http-errors/500",
+            "503_unavailable": "/demo/http-errors/503",
+        },
+        "user_context_tracking": {
+            "demo": "/demo/user-context?user_id=john_doe&action=purchase",
         },
     }
 
@@ -278,6 +292,174 @@ async def demo_slow_operation():
             "duration_seconds": round(duration, 2),
             "note": "Check Azure Monitor for performance metrics",
         }
+
+
+@app.get("/demo/http-errors")
+async def demo_http_error_codes():
+    """
+    Demonstrate how different HTTP error codes appear in Azure Monitor.
+    Use query parameter 'code' to specify the error code to generate.
+    Examples: ?code=400, ?code=404, ?code=500
+    """
+    logger.info("HTTP error codes demo endpoint accessed")
+    return {
+        "message": "Use query parameter ?code=XXX to generate specific HTTP errors",
+        "available_codes": [400, 401, 403, 404, 429, 500, 503],
+        "examples": {
+            "400": "/demo/http-errors/400 - Bad Request",
+            "401": "/demo/http-errors/401 - Unauthorized",
+            "403": "/demo/http-errors/403 - Forbidden",
+            "404": "/demo/http-errors/404 - Not Found",
+            "429": "/demo/http-errors/429 - Too Many Requests",
+            "500": "/demo/http-errors/500 - Internal Server Error",
+            "503": "/demo/http-errors/503 - Service Unavailable",
+        },
+    }
+
+
+@app.get("/demo/http-errors/400")
+async def demo_400_error():
+    """Generate a 400 Bad Request error."""
+    logger.warning("400 Bad Request error triggered", extra={"error_code": 400})
+    error_counter.add(1, {"error_type": "400_bad_request", "http_status": "400"})
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": "Bad Request",
+            "message": "The request parameters are invalid",
+            "example": "Missing required field 'user_id'",
+        },
+    )
+
+
+@app.get("/demo/http-errors/401")
+async def demo_401_error():
+    """Generate a 401 Unauthorized error."""
+    logger.warning("401 Unauthorized error triggered", extra={"error_code": 401})
+    error_counter.add(1, {"error_type": "401_unauthorized", "http_status": "401"})
+    raise HTTPException(
+        status_code=401,
+        detail={
+            "error": "Unauthorized",
+            "message": "Authentication credentials are missing or invalid",
+            "example": "Invalid or expired API token",
+        },
+    )
+
+
+@app.get("/demo/http-errors/403")
+async def demo_403_error():
+    """Generate a 403 Forbidden error."""
+    logger.warning("403 Forbidden error triggered", extra={"error_code": 403})
+    error_counter.add(1, {"error_type": "403_forbidden", "http_status": "403"})
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "Forbidden",
+            "message": "You don't have permission to access this resource",
+            "example": "Insufficient privileges for this operation",
+        },
+    )
+
+
+@app.get("/demo/http-errors/404")
+async def demo_404_error():
+    """Generate a 404 Not Found error."""
+    logger.warning("404 Not Found error triggered", extra={"error_code": 404})
+    error_counter.add(1, {"error_type": "404_not_found", "http_status": "404"})
+    raise HTTPException(
+        status_code=404,
+        detail={
+            "error": "Not Found",
+            "message": "The requested resource was not found",
+            "example": "User with ID 12345 does not exist",
+        },
+    )
+
+
+@app.get("/demo/http-errors/429")
+async def demo_429_error():
+    """Generate a 429 Too Many Requests error."""
+    logger.warning("429 Too Many Requests error triggered", extra={"error_code": 429})
+    error_counter.add(1, {"error_type": "429_rate_limit", "http_status": "429"})
+    raise HTTPException(
+        status_code=429,
+        detail={
+            "error": "Too Many Requests",
+            "message": "Rate limit exceeded",
+            "example": "Maximum 100 requests per minute allowed",
+            "retry_after": 60,
+        },
+    )
+
+
+@app.get("/demo/http-errors/500")
+async def demo_500_error():
+    """Generate a 500 Internal Server Error."""
+    logger.error("500 Internal Server Error triggered", extra={"error_code": 500})
+    error_counter.add(1, {"error_type": "500_server_error", "http_status": "500"})
+    
+    # Simulate an actual error for more realistic tracking
+    try:
+        # Simulate a database connection failure
+        raise Exception("Database connection failed: Connection timeout")
+    except Exception as e:
+        logger.exception("Simulated internal server error")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Internal Server Error",
+                "message": "An unexpected error occurred on the server",
+                "example": "Database connection failed",
+            },
+        )
+
+
+@app.get("/demo/http-errors/503")
+async def demo_503_error():
+    """Generate a 503 Service Unavailable error."""
+    logger.error("503 Service Unavailable error triggered", extra={"error_code": 503})
+    error_counter.add(1, {"error_type": "503_unavailable", "http_status": "503"})
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "error": "Service Unavailable",
+            "message": "The service is temporarily unavailable",
+            "example": "Database maintenance in progress",
+            "retry_after": 300,
+        },
+    )
+
+
+@app.get("/demo/user-context")
+async def demo_user_context(
+    user_id: Optional[str] = Query(default="user123", description="User ID"),
+    action: Optional[str] = Query(default="view_page", description="User action"),
+):
+    """
+    Simple example: Log with user context to filter in Azure Monitor.
+    
+    Example: /demo/user-context?user_id=john_doe&action=purchase
+    
+    Then in Azure Portal, filter by user:
+    traces | where customDimensions.user_id == "john_doe"
+    """
+    logger.info(
+        f"User performed action: {action}",
+        extra={
+            "user_id": user_id,
+            "action": action,
+            "page": "product_page",
+            "country": "US",
+        },
+    )
+    
+    return {
+        "message": "User activity logged with context",
+        "user_id": user_id,
+        "action": action,
+        "azure_query": f'traces | where customDimensions.user_id == "{user_id}"',
+    }
 
 
 @app.get("/demo/all")

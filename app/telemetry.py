@@ -1,7 +1,5 @@
 import logging
-import os
 
-from app.config import settings
 from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.monitor.opentelemetry.exporter import (
     AzureMonitorLogExporter,
@@ -20,6 +18,8 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+from app.config import settings
 
 
 def setup_telemetry(app) -> None:
